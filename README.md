@@ -2,8 +2,8 @@
 
 **LLM-as-Judge en local : évaluer un chatbot avec DeepEval et un juge Llama-3.2-3B — sans API payante**
 
-> Projet de [RAG-TestKit](https://github.com/titano-loris/rag-testkit).
-> RAG-TestKit teste avec des assertions **déterministes** ; DeepEval-Lab ajoute
+> Le Projet de [RAG](https://github.com/titano-loris/test_Meta_Llama-3.2-3B-Instruct).
+> test avec des assertions **déterministes**. DeepEval-Lab ajoute
 > la dimension **LLM-as-Judge** : un modèle local note la qualité des réponses
 > d'un autre modèle selon des métriques natives et des critères métier personnalisés.
 

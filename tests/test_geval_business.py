@@ -1,6 +1,4 @@
 """
-Tests GEval — Critères d'évaluation MÉTIER personnalisés.
-
 GEval est la métrique la plus puissante de DeepEval : on décrit
 en langage naturel les critères d'évaluation, et le juge note
 la réponse selon CES critères.

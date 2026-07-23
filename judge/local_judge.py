@@ -1,6 +1,4 @@
 """
-LocalJudge — Un LLM local (Llama-3.2-3B) comme juge DeepEval.
-
 DeepEval utilise par défaut
 GPT-4 comme juge ou il nécessite une clé OpenAI payante. 
 Ici, on implémente l'interface DeepEvalBaseLLM pour utiliser notre modèle
