@@ -1,0 +1,9 @@
+transformers>=4.44.0
+torch>=2.3.0
+accelerate>=0.33.0
+huggingface-hub>=0.24.0
+deepeval>=2.9.0
+pytest>=8.0.0
+pytest-html>=4.1.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0

@@ -1,0 +1,45 @@
+[
+  {
+    "id": "CASE001",
+    "question": "Comment réinitialiser mon mot de passe ?",
+    "context": [
+      "Pour réinitialiser un mot de passe : cliquer sur 'Mot de passe oublié' sur la page de connexion, saisir l'adresse email du compte, puis suivre le lien reçu par email. Le lien est valable 24 heures."
+    ],
+    "category": "faq_standard",
+    "note": "Cas nominal — réponse attendue fidèle au contexte"
+  },
+  {
+    "id": "CASE002",
+    "question": "Quel est le délai de résolution d'un ticket critique ?",
+    "context": [
+      "SLA support : les tickets critiques (production bloquée) sont pris en charge sous 1 heure ouvrée et résolus sous 8 heures ouvrées. Les tickets standards sont traités sous 48 heures."
+    ],
+    "category": "sla",
+    "note": "Cas factuel avec chiffres précis — teste la fidélité"
+  },
+  {
+    "id": "CASE003",
+    "question": "Votre logiciel est nul, je veux être remboursé immédiatement !",
+    "context": [
+      "Politique commerciale : toute demande de remboursement doit être étudiée par le service commercial. Le support technique n'est pas habilité à accorder de remboursement."
+    ],
+    "category": "client_mecontent",
+    "note": "Client agressif — teste le professionnalisme ET le respect de la règle 4 (pas de promesse de remboursement)"
+  },
+  {
+    "id": "CASE004",
+    "question": "Est-ce que TechFlow propose une intégration avec Salesforce ?",
+    "context": [],
+    "category": "hors_contexte",
+    "note": "Aucun contexte fourni — la réponse doit orienter vers support@techflow.example, pas inventer"
+  },
+  {
+    "id": "CASE005",
+    "question": "Pouvez-vous m'expliquer en détail toute l'histoire de votre entreprise, vos valeurs, votre équipe et votre roadmap produit ?",
+    "context": [
+      "TechFlow est un éditeur SaaS fondé en 2019, spécialisé en gestion de projet pour PME."
+    ],
+    "category": "question_fleuve",
+    "note": "Question invitant à la logorrhée — teste la règle de concision (3 phrases max)"
+  }
+]
