@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepEval-Lab — Journal d'expérimentation · Loris Bartolini</title>
+<meta name="description" content="Peut-on remplacer GPT-4 par un juge local de 3B paramètres ? Trois runs, trois modes de défaillance caractérisés. Journal d'expérimentation QA/IA.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0E1526;          /* fond blueprint profond */
+  --ink-2:#141D33;        /* cartes */
+  --ink-3:#1B2745;        /* surfaces relevées */
+  --line:#26335A;         /* traits techniques */
+  --paper:#E8ECF6;        /* texte principal */
+  --muted:#8B96B8;        /* texte secondaire */
+  --pass:#3DD68C;         /* verdict pass */
+  --fail:#FF6B6B;         /* verdict fail */
+  --infra:#FFB84D;        /* incident outillage */
+  --judge:#D9C6A0;        /* le juge */
+  --mono:'JetBrains Mono',monospace;
+  --disp:'Space Grotesk',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+body{
+  background:var(--ink);
+  color:var(--paper);
+  font-family:var(--disp);
+  line-height:1.6;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size:64px 64px;
+  background-position:center top;
+}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+
+/* ---------- Hero ---------- */
+header{padding:72px 0 48px;border-bottom:1px solid var(--line)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--judge);margin-bottom:20px}
+h1{font-size:clamp(28px,5vw,46px);font-weight:700;line-height:1.15;max-width:21ch}
+h1 em{font-style:normal;color:var(--judge)}
+.hero-sub{margin-top:20px;color:var(--muted);max-width:58ch;font-size:17px}
+.hero-verdict{
+  margin-top:36px;display:inline-flex;align-items:center;gap:14px;
+  font-family:var(--mono);font-size:14px;
+  border:1px solid var(--line);background:var(--ink-2);
+  padding:14px 20px;border-radius:6px;
+}
+.dot{width:9px;height:9px;border-radius:50%}
+.dot.pass{background:var(--pass)} .dot.fail{background:var(--fail)}
+
+/* ---------- Sections ---------- */
+section{padding:56px 0;border-bottom:1px solid var(--line)}
+h2{font-size:clamp(20px,3vw,28px);font-weight:700;margin-bottom:8px}
+.sec-note{color:var(--muted);margin-bottom:32px;max-width:60ch}
+.mono{font-family:var(--mono)}
+
+/* ---------- Matrice de verdicts (signature) ---------- */
+.matrix{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--ink-2)}
+.matrix table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
+.matrix th,.matrix td{padding:12px 10px;text-align:center;border-bottom:1px solid var(--line)}
+.matrix th{background:var(--ink-3);font-weight:500;color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.matrix td:first-child,.matrix th:first-child{text-align:left;padding-left:16px;color:var(--paper);white-space:nowrap}
+.matrix tr:last-child td{border-bottom:none}
+.cell{display:inline-block;min-width:64px;padding:4px 8px;border-radius:4px;font-weight:700;font-size:12px}
+.c-pass{background:rgba(61,214,140,.14);color:var(--pass)}
+.c-fail{background:rgba(255,107,107,.14);color:var(--fail)}
+.c-infra{background:rgba(255,184,77,.14);color:var(--infra)}
+.legend{display:flex;flex-wrap:wrap;gap:18px;margin-top:16px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.matrix-caption{margin-top:14px;font-size:14px;color:var(--muted);max-width:60ch}
+.matrix-caption strong{color:var(--paper)}
+
+/* ---------- Timeline des runs ---------- */
+.runs{display:grid;gap:20px;margin-top:8px}
+.run{
+  border:1px solid var(--line);border-radius:8px;background:var(--ink-2);
+  padding:26px 26px 22px;position:relative;
+}
+.run::before{
+  content:attr(data-run);position:absolute;top:-11px;left:20px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  background:var(--ink);border:1px solid var(--line);border-radius:4px;
+  padding:3px 10px;color:var(--judge);
+}
+.run h3{font-size:18px;margin-bottom:4px}
+.run .meta{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:14px}
+.run .meta b{color:var(--paper);font-weight:500}
+.run p{font-size:15px;color:var(--muted)}
+.run p strong{color:var(--paper)}
+.finding{
+  margin-top:14px;padding:12px 16px;border-left:3px solid var(--judge);
+  background:var(--ink-3);border-radius:0 6px 6px 0;font-size:14.5px;
+}
+.finding.pass-b{border-left-color:var(--pass)}
+.finding.infra-b{border-left-color:var(--infra)}
+
+/* ---------- Pièces à conviction ---------- */
+.evidence{display:grid;gap:18px}
+.term{
+  background:#0A0F1D;border:1px solid var(--line);border-radius:8px;
+  font-family:var(--mono);font-size:13.5px;overflow:hidden;
+}
+.term-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--ink-3);border-bottom:1px solid var(--line);font-size:11px;color:var(--muted);letter-spacing:.06em}
+.term-bar i{width:9px;height:9px;border-radius:50%;background:var(--fail);display:inline-block;font-style:normal}
+.term-body{padding:18px 20px;line-height:1.75}
+.term-body .q{color:var(--muted)} 
+.term-body .hl{color:var(--fail);font-weight:700;background:rgba(255,107,107,.1);padding:1px 5px;border-radius:3px}
+.term-body .ok{color:var(--pass)}
+.term-note{padding:0 20px 16px;font-family:var(--disp);font-size:14px;color:var(--muted)}
+.term-note strong{color:var(--paper)}
+
+/* ---------- Conclusion ---------- */
+.reco{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:8px}
+.reco-card{border:1px solid var(--line);border-radius:8px;padding:22px;background:var(--ink-2)}
+.reco-card .tag{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;display:inline-block;padding:3px 9px;border-radius:4px}
+.t-pass{background:rgba(61,214,140,.14);color:var(--pass)}
+.t-fail{background:rgba(255,107,107,.14);color:var(--fail)}
+.t-judge{background:rgba(217,198,160,.14);color:var(--judge)}
+.reco-card h4{font-size:15.5px;margin-bottom:8px}
+.reco-card p{font-size:14px;color:var(--muted)}
+
+/* ---------- Footer ---------- */
+footer{padding:48px 0 72px;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between}
+.who{font-size:15px;color:var(--muted)}
+.who b{color:var(--paper);font-weight:700}
+.links{display:flex;gap:12px;flex-wrap:wrap}
+.btn{
+  font-family:var(--mono);font-size:13px;text-decoration:none;
+  border:1px solid var(--line);border-radius:6px;padding:10px 18px;
+  color:var(--paper);background:var(--ink-2);transition:border-color .15s,transform .15s;
+}
+.btn:hover{border-color:var(--judge);transform:translateY(-1px)}
+.btn:focus-visible{outline:2px solid var(--judge);outline-offset:2px}
+.btn.primary{background:var(--judge);color:var(--ink);border-color:var(--judge);font-weight:700}
+
+@media(max-width:640px){
+  .matrix{overflow-x:auto}
+  .matrix table{min-width:560px}
+  header{padding:52px 0 36px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">DeepEval-Lab · Journal d'expérimentation</p>
+    <h1>Peut-on remplacer GPT-4 par un juge de <em>3 milliards</em> de paramètres&nbsp;?</h1>
+    <p class="hero-sub">
+      DeepEval évalue les LLM avec un modèle juge — GPT-4 par défaut, API payante, données chez un tiers.
+      J'ai branché un Llama-3.2-3B local à la place, sur mon CPU, et documenté chaque itération.
+      Trois runs. Trois modes de défaillance caractérisés. Une recommandation d'architecture.
+    </p>
+    <div class="hero-verdict">
+      <span class="dot pass"></span>Fiable sur critères GEval simples
+      <span class="dot fail"></span>Défaillant sur métriques multi-étapes
+    </div>
+  </div>
+</header>
+
+<section id="matrice">
+  <div class="wrap">
+    <h2>La matrice des verdicts</h2>
+    <p class="sec-note">Sept tests, trois runs, configuration figée à <span class="mono">temperature=0</span>. Chaque cellule est un verdict — et la lecture par ligne raconte toute l'expérience.</p>
+    <div class="matrix">
+      <table>
+        <thead>
+          <tr><th>Test</th><th>Run 1</th><th>Run 2</th><th>Run 3</th><th>Lecture</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Professionnalisme <span style="color:var(--muted)">· GEval</span></td><td><span class="cell c-pass">PASS</span></td><td><span class="cell c-pass">PASS</span></td><td><span class="cell c-pass">PASS</span></td><td style="color:var(--muted)">stable ×3</td></tr>
+          <tr><td>Non-fabrication <span style="color:var(--muted)">· GEval</span></td><td><span class="cell c-pass">PASS</span></td><td><span class="cell c-pass">PASS</span></td><td><span class="cell c-pass">PASS</span></td><td style="color:var(--muted)">stable ×3</td></tr>
+          <tr><td>Relevancy SLA</td><td><span class="cell c-pass">PASS</span></td><td><span class="cell c-pass">PASS</span></td><td><span class="cell c-pass">PASS</span></td><td style="color:var(--muted)">stable ×3</td></tr>
+          <tr><td>Faithfulness mdp</td><td><span class="cell c-infra">CRASH</span></td><td><span class="cell c-infra">CRASH</span></td><td><span class="cell c-pass">PASS</span></td><td style="color:var(--infra)">infra v2 efficace</td></tr>
+          <tr><td>Concision <span style="color:var(--muted)">· GEval</span></td><td><span class="cell c-fail">0.20</span></td><td><span class="cell c-fail">6 phr.</span></td><td><span class="cell c-fail">9 phr.</span></td><td style="color:var(--fail)">juge indulgent ×2</td></tr>
+          <tr><td>Relevancy FAQ</td><td><span class="cell c-fail">0.00</span></td><td><span class="cell c-fail">0.20</span></td><td><span class="cell c-fail">0.00</span></td><td style="color:var(--fail)">input halluciné</td></tr>
+          <tr><td>Faithfulness SLA</td><td><span class="cell c-fail">0.00</span></td><td><span class="cell c-fail">0.00</span></td><td><span class="cell c-fail">0.00</span></td><td style="color:var(--fail)">biais contexte ×3</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="legend">
+      <span><i class="dot pass" style="display:inline-block"></i>Verdict fiable</span>
+      <span><i class="dot fail" style="display:inline-block"></i>Défaillance du juge ou du chatbot</span>
+      <span><i class="dot" style="display:inline-block;background:var(--infra)"></i>Incident d'outillage</span>
+    </div>
+    <p class="matrix-caption"><strong>Ce que la matrice montre :</strong> les trois lignes vertes sont stables sur trois runs — le juge 3B tient sur des critères qualitatifs simples. Les trois lignes rouges échouent différemment à chaque fois — et c'est là que l'expérience devient intéressante.</p>
+  </div>
+</section>
+
+<section id="runs">
+  <div class="wrap">
+    <h2>Trois runs, trois enseignements</h2>
+    <p class="sec-note">Chaque run part d'hypothèses écrites à l'avance, puis les confronte aux résultats.</p>
+    <div class="runs">
+
+      <div class="run" data-run="Run 1 · Baseline">
+        <h3>Le juge détecte un vrai bug… et en invente deux autres</h3>
+        <p class="meta">11 min 54 s · <b>3 passed / 4 failed</b> · juge v1</p>
+        <p>Le juge repère à raison une réponse trop verbeuse du chatbot (score 0.20 — vraie détection).
+        Mais sur Relevancy, il produit un raisonnement auto-contradictoire, et sur Faithfulness,
+        il invente une contradiction absente de la réponse. Un crash JSON complète le tableau :
+        le juge renvoie une liste là où le schéma attend un objet.</p>
+        <div class="finding">Métriques multi-étapes : la complexité du raisonnement demandé au juge — pas la qualité du chatbot — est le facteur limitant.</div>
+      </div>
+
+      <div class="run" data-run="Run 2 · Reproductibilité">
+        <h3>Même configuration, verdicts différents</h3>
+        <p class="meta">10 min 31 s · <b>3 passed / 4 failed</b> · config identique au Run 1</p>
+        <p>Run involontairement précieux : le patch v2 n'était pas appliqué, ce qui en fait une
+        mesure de reproductibilité pure. Résultat : le GEval Concision qui bloquait au Run 1
+        <strong>laisse passer</strong> la même violation au Run 2 — seul le garde-fou déterministe
+        (comptage de phrases) la rattrape. Relevancy passe de 0.00 à 0.20 sans aucun changement.</p>
+        <div class="finding">Le juge 3B n'est pas reproductible malgré <span class="mono">temperature=0</span>. Un LLM-as-Judge ne peut pas être l'unique barrière de qualité.</div>
+      </div>
+
+      <div class="run" data-run="Run 3 · Juge v2">
+        <h3>L'infra réparée isole le vrai coupable</h3>
+        <p class="meta">9 min 00 s · <b>4 passed / 3 failed</b> · coercition de schéma + 12 tests unitaires</p>
+        <p>La coercition liste→objet élimine le crash : la catégorie « infra » est soldée,
+        tout échec résiduel est imputable au chatbot ou au juge. Et le juge livre sa plus
+        belle défaillance : il évalue la réponse contre une question… qu'il a inventée.</p>
+        <div class="finding infra-b">Corriger l'outillage n'améliore pas le raisonnement : le parsing était un symptôme, pas la cause.</div>
+        <div class="finding pass-b">Bonus contre-intuitif : passer le chatbot de 200 à 300 tokens a <em>aggravé</em> sa verbosité (6 → 9 phrases). La troncature masquait le bug de fond.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="preuves">
+  <div class="wrap">
+    <h2>Exemples</h2>
+    <p class="sec-note">Les raisons produites par le juge, extraites des logs. Elles valent mieux qu'un long discours.</p>
+    <div class="evidence">
+
+      <div class="term">
+        <div class="term-bar"><i></i>run-3 · AnswerRelevancy · score 0.00</div>
+        <div class="term-body">
+          <span class="q">Question posée :</span> « Comment réinitialiser mon mot de passe ? »<br>
+          <span class="q">Réponse du chatbot :</span> <span class="ok">guide correct en 4 étapes</span><br>
+          <span class="q">Raison du juge :</span> "all the irrelevant statements are completely unrelated
+          to the input <span class="hl">about laptop features</span>"
+        </div>
+        <p class="term-note"><strong>Le juge a halluciné la question elle-même.</strong> Personne n'a parlé d'ordinateur portable — il a évalué la réponse contre un input inventé.</p>
+      </div>
+
+      <div class="term">
+        <div class="term-bar"><i></i>runs 1 &amp; 3 · Faithfulness · score 0.00</div>
+        <div class="term-body">
+          <span class="q">Raison du juge :</span> "contradicts itself by stating that standard tickets
+          are resolved <span class="hl">under 48 hours</span>"<br>
+          <span class="q">Réalité :</span> les 48 heures figurent <span class="ok">uniquement dans le contexte</span> — jamais dans la réponse.
+        </div>
+        <p class="term-note"><strong>Biais systématique de confusion contexte/sortie</strong> — même erreur, formulation quasi identique, à deux runs d'écart. Ce n'est pas du bruit : c'est un mode de défaillance reproductible.</p>
+      </div>
+
+      <div class="term">
+        <div class="term-bar"><i></i>runs 2 &amp; 3 · GEval Concision · verdict "concis"</div>
+        <div class="term-body">
+          <span class="q">Règle métier :</span> 3 phrases maximum<br>
+          <span class="q">Réponses jugées « concises » :</span> <span class="hl">6 puis 9 phrases</span> de marketing, faits inventés inclus<br>
+          <span class="q">Détection :</span> <span class="ok">garde-fou déterministe (comptage de phrases)</span> — deux fois sur deux
+        </div>
+        <p class="term-note"><strong>Le garde-fou structurel a rattrapé le juge deux fois.</strong> L'argument le plus concret en faveur de l'architecture hybride.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="conclusion">
+  <div class="wrap">
+    <h2>Verdict &amp; architecture recommandée</h2>
+    <p class="sec-note">Ce qu'un juge local 3B peut faire, ne peut pas faire, et comment l'utiliser quand même.</p>
+    <div class="reco">
+      <div class="reco-card">
+        <span class="tag t-pass">Utilisable</span>
+        <h4>GEval sur critères qualitatifs simples</h4>
+        <p>Professionnalisme, non-fabrication : 6/6 verdicts stables sur trois runs. Un juge local suffit — gratuit, souverain, hors-ligne.</p>
+      </div>
+      <div class="reco-card">
+        <span class="tag t-fail">À proscrire seul</span>
+        <h4>Métriques multi-étapes</h4>
+        <p>Relevancy, Faithfulness : variance à température zéro, input halluciné, biais contexte/sortie. Prévoir un juge de plus grande capacité.</p>
+      </div>
+      <div class="reco-card">
+        <span class="tag t-judge">Obligatoire</span>
+        <h4>Garde-fous déterministes</h4>
+        <p>Comptage, présence de faits, formats : ils ont rattrapé le juge deux fois. Aucun LLM-as-Judge ne doit être la seule barrière.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between">
+    <p class="who"><b>Loris Bartolini</b> — QA Automation Engineer · AI &amp; LLM Testing</p>
+    <div class="links">
+      <a class="btn primary" href="https://github.com/titano-loris/deepeval-lab">Code source ↗</a>
+      <a class="btn" href="https://linkedin.com/in/loris-bartolini">LinkedIn ↗</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

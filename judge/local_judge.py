@@ -1,13 +1,15 @@
 """
-DeepEval utilise par défaut
-GPT-4 comme juge ou il nécessite une clé OpenAI payante. 
-Ici, on implémente l'interface DeepEvalBaseLLM pour utiliser notre modèle
-local à la place.
+LocalJudge v2 — Un LLM local (Llama-3.2-3B) comme juge DeepEval.
 
-Défi technique : les métriques DeepEval attendent du JSON structuré
-en sortie du juge. Un modèle 3B est moins fiable qu'un GPT-4 sur ce
-point — on ajoute donc une couche de robustesse (extraction JSON,
-retry) pour compenser.
+Changements v1 -> v2 :
+1. Le schéma JSON attendu est communiqué au juge DÈS le premier appel
+   (v1 : uniquement au retry, le modèle devinait le format à l'aveugle).
+2. Coercition automatique liste -> objet : quand le juge renvoie
+   [{...}] alors que le schéma attend {"verdicts": [{...}]}, on emballe.
+   C'est la cause du crash `TypeError: must be a mapping, not list`.
+3. Extraction JSON tolérante aux listes de premier niveau.
+4. Appel au pipeline factorisé dans _call(), max_new_tokens 512 -> 1024
+   (les métriques multi-étapes génèrent des verdicts longs, tronqués à 512).
 """
 import json
 import logging
@@ -29,7 +31,7 @@ class LocalJudge(DeepEvalBaseLLM):
 
     Usage:
         judge = LocalJudge()
-        metric = AnswerRelevancyMetric(model=judge, threshold=0.6)
+        metric = AnswerRelevancyMetric(model=judge, threshold=0.6, async_mode=False)
     """
 
     def __init__(self, model_name: str = JUDGE_MODEL):
@@ -49,110 +51,139 @@ class LocalJudge(DeepEvalBaseLLM):
             self._pipe = pipeline(
                 "text-generation", model=model, tokenizer=tokenizer
             )
-            logger.info("Juge local prêt.")
+            logger.info("Juge local prêt (v2).")
         return self._pipe
 
-    def generate(self, prompt: str, schema: BaseModel = None) -> str:
-        """
-        Génère la réponse du juge. Si un schéma pydantic est fourni
-        (cas des métriques DeepEval), on force et on valide le JSON.
-        """
+    # ------------------------------------------------------------------
+    # Appel bas niveau
+    # ------------------------------------------------------------------
+    def _call(self, messages: list[dict]) -> str:
+        """Un appel au modèle, en génération déterministe."""
         pipe = self.load_model()
-
-        system = (
-            "You are a precise evaluation judge. "
-            "Respond ONLY with valid JSON matching the requested format. "
-            "No markdown, no explanation outside the JSON."
-        )
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ]
-
         output = pipe(
             messages,
-            max_new_tokens=512,
+            max_new_tokens=1024,
             temperature=0.0,
             do_sample=False,
             pad_token_id=pipe.tokenizer.eos_token_id,
         )
-        raw = output[0]["generated_text"][-1]["content"].strip()
+        return output[0]["generated_text"][-1]["content"].strip()
+
+    # ------------------------------------------------------------------
+    # Interface DeepEvalBaseLLM
+    # ------------------------------------------------------------------
+    def generate(self, prompt: str, schema: BaseModel = None):
+        system = (
+            "You are a precise evaluation judge. "
+            "Respond ONLY with valid JSON. No markdown fences, no prose."
+        )
+
+        # v2 — le format attendu est annoncé dès le premier appel
+        if schema is not None:
+            system += (
+                "\nYour answer MUST be a single JSON OBJECT (not a list) "
+                "matching exactly this JSON schema:\n"
+                + json.dumps(schema.model_json_schema())
+            )
+
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+        raw = self._call(messages)
 
         if schema is None:
             return raw
 
-        # --- Couche de robustesse JSON pour petit modèle ---
-        parsed = self._extract_json(raw)
-        if parsed is not None:
-            try:
-                return schema(**parsed)
-            except Exception as exc:
-                logger.warning(f"JSON valide mais schéma non conforme : {exc}")
+        result = self._parse_against_schema(raw, schema)
+        if result is not None:
+            return result
 
-        # Retry unique avec consigne renforcée
+        # Retry unique, consigne renforcée
         retry_messages = messages + [
             {"role": "assistant", "content": raw},
             {
                 "role": "user",
                 "content": (
-                    "Your previous answer was not valid JSON for the schema "
-                    f"{schema.model_json_schema()}. "
-                    "Answer again with ONLY the JSON object."
+                    "Invalid. Output ONLY the JSON object, starting with '{' "
+                    "and matching exactly the schema given above."
                 ),
             },
         ]
-        output = pipe(
-            retry_messages,
-            max_new_tokens=512,
-            temperature=0.0,
-            do_sample=False,
-            pad_token_id=pipe.tokenizer.eos_token_id,
-        )
-        raw_retry = output[0]["generated_text"][-1]["content"].strip()
-        parsed = self._extract_json(raw_retry)
-        if parsed is not None:
-            return schema(**parsed)
+        raw_retry = self._call(retry_messages)
+        result = self._parse_against_schema(raw_retry, schema)
+        if result is not None:
+            return result
 
         raise ValueError(
-            f"Le juge local n'a pas produit de JSON valide.\n"
+            f"Juge local : JSON invalide après retry.\n"
             f"Sortie brute : {raw_retry[:300]}"
         )
 
-    async def a_generate(self, prompt: str, schema: BaseModel = None) -> str:
-        """Version async — délègue à la version synchrone (CPU local)."""
+    async def a_generate(self, prompt: str, schema: BaseModel = None):
+        """Version async — délègue au synchrone (inférence CPU locale)."""
         return self.generate(prompt, schema)
 
     def get_model_name(self) -> str:
-        return f"LocalJudge({self.model_name})"
+        return f"LocalJudge-v2({self.model_name})"
+
+    # ------------------------------------------------------------------
+    # Couche de robustesse
+    # ------------------------------------------------------------------
+    def _parse_against_schema(self, raw: str, schema: BaseModel):
+        """Extrait, coerce, puis valide contre le schéma pydantic."""
+        parsed = self._extract_json(raw)
+        if parsed is None:
+            return None
+        parsed = self._coerce_to_schema(parsed, schema)
+        try:
+            return schema(**parsed)
+        except Exception as exc:
+            logger.warning(f"Schéma non conforme : {exc}")
+            return None
 
     @staticmethod
-    def _extract_json(text: str) -> dict | None:
+    def _coerce_to_schema(parsed, schema: BaseModel) -> dict:
         """
-        Extrait le premier objet JSON d'un texte, même entouré de bruit
-        (markdown fences, phrases parasites — fréquent avec les petits modèles).
+        v2 — Coercition liste -> objet.
+
+        Les petits modèles renvoient souvent [{...}, {...}] là où DeepEval
+        attend {"verdicts": [{...}, {...}]}. Si le schéma n'a qu'un seul
+        champ, on emballe automatiquement la valeur dedans.
         """
-        # Retire les fences markdown éventuelles
+        if isinstance(parsed, dict):
+            return parsed
+        fields = list(schema.model_fields.keys())
+        if len(fields) == 1:
+            return {fields[0]: parsed}
+        return {}  # échouera à la validation -> déclenche le retry
+
+    @staticmethod
+    def _extract_json(text: str):
+        """
+        Extrait le premier JSON d'un texte bruité.
+        v2 : accepte aussi une liste de premier niveau.
+        """
         text = re.sub(r"```(?:json)?", "", text).strip()
 
-        # Tentative directe
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
 
-        # Recherche du premier bloc { ... } équilibré
-        start = text.find("{")
-        if start == -1:
-            return None
-        depth = 0
-        for i, ch in enumerate(text[start:], start):
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        return json.loads(text[start : i + 1])
-                    except json.JSONDecodeError:
-                        return None
+        for opener, closer in (("{", "}"), ("[", "]")):
+            start = text.find(opener)
+            if start == -1:
+                continue
+            depth = 0
+            for i, ch in enumerate(text[start:], start):
+                if ch == opener:
+                    depth += 1
+                elif ch == closer:
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return json.loads(text[start : i + 1])
+                        except json.JSONDecodeError:
+                            break
         return None
